@@ -1,0 +1,58 @@
+---
+- name: Setup and deploy Product API
+  hosts: target_vm
+  become: yes
+
+  tasks:
+    - name: Mise à jour des paquets et installation de Docker
+      apt:
+        name: 
+          - docker.io
+          - mysql-client
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker is started and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Pull Docker image of Product API
+      docker_image:
+        name: "{{ dockerhub_username }}/product-api:latest"
+        source: pull
+
+    - name: Install MySQL Server
+      apt:
+        name: mysql-server
+        state: present
+
+    - name: Ensure MySQL is started and enabled
+      service:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: Run Product API Container
+      docker_container:
+        name: product-api
+        image: "{{ dockerhub_username }}/product-api:latest"
+        state: started
+        restart_policy: always
+        ports:
+          - "8086:8086"
+        env:
+          SPRING_DATASOURCE_URL: "jdbc:mysql://localhost:3306/product_db"
+          SPRING_DATASOURCE_USERNAME: "root"
+          SPRING_DATASOURCE_PASSWORD: ""
+
+    - name: Verification du déploiement
+      uri:
+        url: http://localhost:8086/api/products
+        method: GET
+        status_code: 200
+      register: deploy_check
+      until: deploy_check.status == 200
+      retries: 5
+      delay: 10
