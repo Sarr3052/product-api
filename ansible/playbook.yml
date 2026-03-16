@@ -20,7 +20,7 @@
 
     - name: Pull Docker image of Product API
       docker_image:
-        name: "{{ dockerhub_username }}/product-api:latest"
+        name: "sarr3052/product-api:latest"
         source: pull
 
     - name: Install MySQL Server
@@ -28,20 +28,31 @@
         name: mysql-server
         state: present
 
-    - name: Ensure MySQL is started and enabled
-      service:
-        name: mysql
-        state: started
-        enabled: yes
+    - name: Allow MySQL to listen on all interfaces
+      lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: '^bind-address'
+        line: 'bind-address = 0.0.0.0'
+      notify: Restart MySQL
+
+    - name: Flush handlers to restart MySQL immediately
+      meta: flush_handlers
+
+    - name: Create database product_db
+      shell: mysql -e "CREATE DATABASE IF NOT EXISTS product_db;"
+
+    - name: Stop and remove old container if exists
+      docker_container:
+        name: product-api
+        state: absent
 
     - name: Run Product API Container
       docker_container:
         name: product-api
-        image: "{{ dockerhub_username }}/product-api:latest"
+        image: "sarr3052/product-api:latest"
         state: started
         restart_policy: always
-        ports:
-          - "8086:8086"
+        network_mode: host
         env:
           SPRING_DATASOURCE_URL: "jdbc:mysql://localhost:3306/product_db"
           SPRING_DATASOURCE_USERNAME: "root"
@@ -54,5 +65,11 @@
         status_code: 200
       register: deploy_check
       until: deploy_check.status == 200
-      retries: 5
+      retries: 20
       delay: 10
+
+  handlers:
+    - name: Restart MySQL
+      service:
+        name: mysql
+        state: restarted
